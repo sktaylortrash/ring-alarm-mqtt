@@ -120,7 +120,7 @@ function supportedDevice(device) {
             device.command = true
             break;
         case 'switch.multilevel':
-            device.component = (device.data.categoryId === 17) ? 'fan' : 'light'
+            device.component = 'light'
             device.command = true
     }
     
@@ -225,13 +225,8 @@ async function publishDevice(device) {
             mqttClient.subscribe(commandTopic)
         }
 
-        // If device is dimmer include brightness topics if fan include speed 
-        if (device.deviceType == 'switch.multilevel' && device.data.categoryId === 17) {
-            message.speed_state_topic = sensorTopic+'/speed_state'
-            message.speed_command_topic = sensorTopic+'/speed_command'
-            mqttClient.subscribe(sensorTopic+'/speed_command')
-        }
-        else if (device.deviceType == 'switch.multilevel') {
+        // If device is dimmer include brightness topics
+        if (device.deviceType == 'switch.multilevel') {
             message.brightness_scale = '100'
             message.brightness_state_topic = sensorTopic+'/brightness_state'
             message.brightness_command_topic = sensorTopic+'/brightness_command'
@@ -265,7 +260,6 @@ async function publishDevice(device) {
 function publishDeviceData(data, deviceTopic) {
     var deviceState = undefined
     var deviceBrightnessState = undefined
-    var deviceSpeedState = undefined
     switch(data.deviceType) {
         case 'sensor.contact':
         case 'sensor.motion':
@@ -308,7 +302,6 @@ function publishDeviceData(data, deviceTopic) {
             break;
         case 'switch.multilevel':
             deviceState = data.on ? "ON" : "OFF"
-            deviceSpeedState = (data.level && !isNaN(data.level) ? 100 * data.level : 0)    
             deviceBrightnessState = (data.level && !isNaN(data.level) ? 100 * data.level : 0)
             break;
     }
@@ -332,18 +325,6 @@ function publishDeviceData(data, deviceTopic) {
 
     if (deviceBrightnessState !== undefined) {
         publishMqttState(deviceTopic+'/brightness_state', deviceBrightnessState.toString())
-    }
-
-    if (deviceSpeedState !== undefined) {
-        if (0 <= deviceSpeedState && deviceSpeedState <= 33) {
-            publishMqttState(deviceTopic+'/speed_state', "low")
-        }
-        else if (34 <= deviceSpeedState && deviceSpeedState <= 66) {
-            publishMqttState(deviceTopic+'/speed_state', "medium")
-        }
-        else if (67 <= deviceSpeedState && deviceSpeedState <= 100) {
-            publishMqttState(deviceTopic+'/speed_state', "high")
-        }
     }
 
     // Publish any available device attributes (battery, power, etc)
@@ -454,23 +435,7 @@ async function setSwitchState(location, deviceId, message, stateCmd) {
         return
     }
 
-    if (stateCmd == 'speed_command') {
-        const level = message
-        debug('Set speed state to '+level+' for switch Id: '+deviceId)
-        if (!(message === "low" || message === "medium" || message === "high")) {
-            debug('Speed command received but out of range (low,medium,high)!')
-        } else {
-            if (message === "low") {
-            device.setInfo({ device: { v1: { level: 0.01 } } })
-            } 
-            else if (message === "medium") {
-                device.setInfo({ device: { v1: { level: 0.5 } } })
-            }
-            else if (message === "high") {
-                device.setInfo({ device: { v1: { level: 1 } } })
-            }
-        }
-    } else if (stateCmd == 'brightness_command') {
+    if (stateCmd == 'brightness_command') {
         const level = message
         debug('Set brightness state to '+level+' for switch Id: '+deviceId)
         if (isNaN(message)) {
@@ -529,7 +494,6 @@ async function processCommand(topic, message) {
             case 'lock':
                 setLockTargetState(location, deviceId, message)
                 break;
-            case 'fan':
             case 'light':
             case 'switch':
                 setSwitchState(location, deviceId, message, stateCmd)
